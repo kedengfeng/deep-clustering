@@ -27,8 +27,8 @@ class DataGenerator(object):
         for pkl in pkl_list:
             self.samples.extend(cPickle.load(open(pkl, 'rb')))
         self.tot_samp = len(self.samples)
-        print self.tot_samp
-        print 'samples'
+        print(self.tot_samp)
+        print('samples')
         np.random.shuffle(self.samples)
 
     def gen_batch(self):

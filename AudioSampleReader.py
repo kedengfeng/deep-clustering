@@ -42,7 +42,7 @@ class AudioSampleReader(object):
         the formats required by the model'''
         # loading and transformation
         speech_mix, _ = librosa.load(data_dir, SAMPLING_RATE)
-        speech_mix_spec0 = stft(speech_mix, FRAME_SIZE)[:, :NEFF]
+        speech_mix_spec0 = librosa.stft(y=speech_mix, FRAME_SIZE)[:, :NEFF]
         speech_mix_spec = np.abs(speech_mix_spec0)
         speech_phase = speech_mix_spec0 / speech_mix_spec
         speech_mix_spec = np.maximum(
