@@ -25,7 +25,7 @@ from matplotlib import pyplot as plt
 from AudioSampleReader import AudioSampleReader
 from model import Model
 
-from GlobalConstont import *
+from GlobalConstant import *
 
 
 # dir for test audio
@@ -35,7 +35,7 @@ sum_dir = 'sum'
 # dir to load model
 train_dir = 'train'
 
-lr = 0.00001  # not useful during test
+lr = 0.001  # not useful during test
 n_hidden = 300  # hidden state size
 batch_size = 1  # 1 for audio sample test
 hop_size = 64
@@ -50,13 +50,17 @@ def stft(sig, frameSize, overlapFac=0.75, window=np.hanning):
     """ short time fourier transform of audio signal """
     win = window(frameSize)
     hopSize = int(frameSize - np.floor(overlapFac * frameSize))
+
     # zeros at beginning (thus center of 1st window should be for sample nr. 0)
     # samples = np.append(np.zeros(np.floor(frameSize / 2.0)), sig)
     samples = np.array(sig, dtype='float64')
+
     # cols for windowing
-    cols = np.ceil((len(samples) - frameSize) / float(hopSize)) + 1
+    cols = int(np.ceil((len(samples) - frameSize) / float(hopSize))) + 1
+
     # zeros at end (thus samples can be fully covered by frames)
     samples = np.append(samples, np.zeros(frameSize))
+
     frames = stride_tricks.as_strided(
         samples,
         shape=(cols, frameSize),
@@ -71,23 +75,30 @@ def out_put(N_frame):
     with tf.Graph().as_default():
         # feed forward keep prob
         p_keep_ff = tf.placeholder(tf.float32, shape=None)
+
         # recurrent keep prob
         p_keep_rc = tf.placeholder(tf.float32, shape=None)
+
         # audio sample generator
         data_generator = AudioSampleReader(data_dir)
+
         # placeholder for model input
         in_data = tf.placeholder(
             tf.float32, shape=[batch_size, FRAMES_PER_SAMPLE, NEFF])
+
         # init the model
         BiModel = Model(n_hidden, batch_size, p_keep_ff, p_keep_rc)
+
         # make inference of embedding
         embedding = BiModel.inference(in_data)
         saver = tf.train.Saver(tf.all_variables())
         sess = tf.Session()
+
         # restore the model
-        saver.restore(sess, 'train/model.ckpt-492000')
+        saver.restore(sess, 'train/model.ckpt-80')
         tot_frame = N_frame * FRAMES_PER_SAMPLE
-        # arrays to store output waveform
+        #
+        #  arrays to store output waveform
         out_audio1 = np.zeros([(tot_frame - 1) * hop_size + FRAME_SIZE])
         out_audio2 = np.zeros([(tot_frame - 1) * hop_size + FRAME_SIZE])
         mix = np.zeros([(tot_frame - 1) * hop_size + FRAME_SIZE])
@@ -95,18 +106,22 @@ def out_put(N_frame):
 
         # for every chunk of frames of data
         for step in range(N_frame):
+
             # import ipdb; ipdb.set_trace()
             data_batch = data_generator.gen_next()
             if data_batch is None:
                 break
+
             # log spectrum info.
             in_data_np = np.concatenate(
                 [np.reshape(item['Sample'], [1, FRAMES_PER_SAMPLE, NEFF])
                  for item in data_batch])
+
             # phase info.
             in_phase_np = np.concatenate(
                 [np.reshape(item['Phase'], [1, FRAMES_PER_SAMPLE, NEFF])
                  for item in data_batch])
+
             # VAD info.
             VAD_data_np = np.concatenate(
                 [np.reshape(item['VAD'], [1, FRAMES_PER_SAMPLE, NEFF])
@@ -119,6 +134,7 @@ def out_put(N_frame):
                 feed_dict={in_data: in_data_np,
                            p_keep_ff: 1,
                            p_keep_rc: 1})
+
             # ipdb.set_trace()
             # get active TF-bin embedding according to VAD
             embedding_ac = [embedding_np[i, j, :]
@@ -126,6 +142,7 @@ def out_put(N_frame):
                                 range(FRAMES_PER_SAMPLE), range(NEFF))
                             if VAD_data_np[0, i, j] == 1]
             if(sep_flag[step] == 1):
+
                 # if the frame need to be seperated
                 # cluster the embeddings
                 # import ipdb; ipdb.set_trace()
@@ -196,36 +213,47 @@ def out_put(N_frame):
                         mask[i, j, kmean.labels_[ind]] = 1
                         ind += 1
             for i in range(FRAMES_PER_SAMPLE):
+                # 定位
                 # apply the mask and reconstruct the waveform
                 tot_ind = step * FRAMES_PER_SAMPLE + i
+
                 # ipdb.set_trace()
-                # amp = (in_data_np[0, i, :] *
-                #        data_batch[0]['Std']) + data_batch[0]['Mean']
+                # amp = (in_data_np[0, i, :] * data_batch[0]['Std']) + data_batch[0]['Mean']
+                # 出频域图
                 amp = in_data_np[0, i, :] * GLOBAL_STD + GLOBAL_MEAN
                 out_data1 = (mask[i, :, 0] * amp *
                              VAD_data_np[0, i, :])
                 out_data2 = (mask[i, :, 1] * amp *
                              VAD_data_np[0, i, :])
                 out_mix = amp
+
+
+                # 转换（时域），前面用log转换成语谱图
                 out_data1_l = 10 ** (out_data1 / 20) / AMP_FAC
                 out_data2_l = 10 ** (out_data2 / 20) / AMP_FAC
                 out_mix_l = 10 ** (out_mix / 20) / AMP_FAC
 
+                # in_phase_np: 相位谱
                 out_stft1 = out_data1_l * in_phase_np[0, i, :]
                 out_stft2 = out_data2_l * in_phase_np[0, i, :]
                 out_stft_mix = out_mix_l * in_phase_np[0, i, :]
 
+                # 求共轭
                 con_data1 = out_stft1[-2:0:-1].conjugate()
                 con_data2 = out_stft2[-2:0:-1].conjugate()
                 con_mix = out_stft_mix[-2:0:-1].conjugate()
 
+                # 拼接
                 out1 = np.concatenate((out_stft1, con_data1))
                 out2 = np.concatenate((out_stft2, con_data2))
                 out_mix = np.concatenate((out_stft_mix, con_mix))
+
+                # 做短时傅立叶变换
                 frame_out1 = np.fft.ifft(out1).astype(np.float64)
                 frame_out2 = np.fft.ifft(out2).astype(np.float64)
                 frame_mix = np.fft.ifft(out_mix).astype(np.float64)
 
+                # 0.5016 减小音量
                 out_audio1[tot_ind * hop_size:tot_ind * hop_size + FRAME_SIZE] += frame_out1 * 0.5016
                 out_audio2[tot_ind * hop_size:tot_ind * hop_size + FRAME_SIZE] += frame_out2 * 0.5016
                 mix[tot_ind * hop_size:tot_ind * hop_size + FRAME_SIZE] += frame_mix * 0.5016

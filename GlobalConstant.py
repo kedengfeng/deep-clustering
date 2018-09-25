@@ -4,7 +4,7 @@ File defining the global constants
 FRAMES_PER_SAMPLE = 100  # number of frames forming a chunk of data
 SAMPLING_RATE = 8000
 FRAME_SIZE = 256
-NEFF = 129  # effective FFT points
+NEFF = 129 # effective FFT points
 # amplification factor of the waveform sig
 AMP_FAC = 10000
 MIN_AMP = 10000

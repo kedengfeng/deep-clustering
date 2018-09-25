@@ -10,7 +10,7 @@ import os
 import matplotlib as mpl
 mpl.use('agg')
 from matplotlib import pyplot as plt
-from GlobalConstont import *
+from GlobalConstant import *
 
 
 def stft(sig, frameSize, overlapFac=0.75, window=np.hanning):
@@ -21,7 +21,7 @@ def stft(sig, frameSize, overlapFac=0.75, window=np.hanning):
     # samples = np.append(np.zeros(np.floor(frameSize / 2.0)), sig)
     samples = np.array(sig, dtype='float64')
     # cols for windowing
-    cols = np.ceil((len(samples) - frameSize) / float(hopSize)) + 1
+    cols = int(np.ceil((len(samples) - frameSize) / float(hopSize))) + 1
     # zeros at end (thus samples can be fully covered by frames)
     samples = np.append(samples, np.zeros(frameSize))
     frames = stride_tricks.as_strided(
@@ -30,7 +30,6 @@ def stft(sig, frameSize, overlapFac=0.75, window=np.hanning):
         strides=(samples.strides[0] * hopSize, samples.strides[0])).copy()
     frames *= win
     return np.fft.rfft(frames)
-
 
 class AudioSampleReader(object):
     '''
@@ -42,19 +41,30 @@ class AudioSampleReader(object):
         the formats required by the model'''
         # loading and transformation
         speech_mix, _ = librosa.load(data_dir, SAMPLING_RATE)
-        speech_mix_spec0 = librosa.stft(y=speech_mix, FRAME_SIZE)[:, :NEFF]
+        # 转时频域
+        speech_mix_spec0 = stft(speech_mix, FRAME_SIZE)[:, :NEFF]
         speech_mix_spec = np.abs(speech_mix_spec0)
+
+        # 取正负号？？？？？？？
         speech_phase = speech_mix_spec0 / speech_mix_spec
+
+        # np.max(speech_mix_spec) / MIN_AMP：阈值
         speech_mix_spec = np.maximum(
             speech_mix_spec, np.max(speech_mix_spec) / MIN_AMP)
         speech_mix_spec = 20. * np.log10(speech_mix_spec * AMP_FAC)
         max_mag = np.max(speech_mix_spec)
+        # 1：正常段  0：静音段
         speech_VAD = (speech_mix_spec > (max_mag - THRESHOLD)).astype(int)
+
+        # 标准化
+        # speech_mix_spec = pyasv.speech_processing(speech_mix_spec)
         speech_mix_spec = (speech_mix_spec - GLOBAL_MEAN) / GLOBAL_STD
         len_spec = speech_mix_spec.shape[0]
+
         k = 0
         self.ind = 0
         self.samples = []
+
         # feed the transformed data into a sample list
         while(k + FRAMES_PER_SAMPLE < len_spec):
             phase = speech_phase[k: k + FRAMES_PER_SAMPLE, :]
@@ -65,6 +75,8 @@ class AudioSampleReader(object):
                            'Phase': phase}
             self.samples.append(sample_dict)
             k = k + FRAMES_PER_SAMPLE
+
+        # 处理没处理的数据
         # import ipdb; ipdb.set_trace()
         n_left = FRAMES_PER_SAMPLE - len_spec + k
         # store phase for waveform reconstruction
